@@ -1,0 +1,136 @@
+// ==UserScript==
+// @name         Saved products: Export to Excel
+// @namespace    http://tampermonkey.net/
+// @version      2.1
+// @description  Extract information from saved products list and display in a table with a copy button
+// @author       Niels Krejberg
+// @match        https://www.bolia.com/en/partner/mybolia/*
+// @match        https://uat.bolia.com/en/partner/mybolia/*
+// @match        https://qa.bolia.com/en/partner/mybolia/*
+// @grant        GM_addStyle
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    function extractProductInfo() {
+        const productInfo = [];
+        document.querySelectorAll('.flex.flex-wrap.md\\:flex-nowrap').forEach(div => {
+            const anchor = div.querySelector('a');
+            const priceElements = div.querySelectorAll('.min-w-200.flex.flex-nowrap.whitespace-nowrap.mb-7.lg\\:min-w-250 > span.ml-auto.pl-20');
+            const shipmentDateElement = div.querySelectorAll('dl.flex dd');
+
+            if (anchor && priceElements.length >= 2 && shipmentDateElement) {
+                const sku = anchor.getAttribute('sku');
+                const title = anchor.getAttribute('title');
+                const earliestShipmentDate = "'" + shipmentDateElement[6].textContent.trim() + "'"; // Extracted date
+                const rrp = priceElements[0].textContent.trim();
+                const netPricePerItem = priceElements[1].textContent.trim();
+                const netPriceDisc = priceElements[2].textContent.trim();
+                const netPriceTotal = priceElements[3].textContent.trim();
+
+                productInfo.push({ sku, title, earliestShipmentDate, rrp, netPricePerItem, netPriceDisc, netPriceTotal });
+            }
+        });
+
+        return productInfo;
+    }
+
+    function displayProductTable(productInfo) {
+        if (!productInfo.length) return;
+
+        const container = document.createElement('div');
+        container.id = 'productInfoContainer';
+        container.style.cssText = 'position: fixed; top: 200px; right: 320px; z-index: 999999999; background: #f0ede6; padding: 20px; border: 1px solid #ccc; border-radius: 5px; overflow: auto; max-height: 800px; max-width: 1700px;';
+
+        const copyButton = document.createElement('button');
+        copyButton.id = 'extractButton';
+        copyButton.textContent = 'Copy table to clipboard';
+        copyButton.style.cssText = 'margin-left: 325px; padding: 10px; background: #EAE4D4; color: black; border: none; border-radius: 5px; cursor: pointer;';
+
+        copyButton.addEventListener('click', function() {
+            const tempInput = document.createElement('textarea');
+            tempInput.value = table.outerHTML;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            this.textContent = 'Table copied to clipboard!';
+            setTimeout(() => {
+                this.textContent = 'Copy table to clipboard';
+            }, 2500);
+        });
+
+        copyButton.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#ccc2ab';
+        });
+
+        copyButton.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '#EAE4D4';
+        });
+
+        container.appendChild(copyButton);
+
+        const table = document.createElement('table');
+        table.id = 'productInfoTable';
+        table.style.cssText = 'width: 100%; border-collapse: collapse; margin-top: 10px;';
+        table.innerHTML = `<tr style="background-color: #EAE4D4;"><th style="padding: 12px;">${['SKU', 'Product name', 'Earliest shipment date', 'RRP', 'Net price per item', 'Net price discount', 'Net price total'].join('</th><th style="padding: 10px;">')}</th></tr>`;
+
+        productInfo.forEach(product => {
+            const row = table.insertRow();
+            Object.values(product).forEach((value, index) => {
+                const cell = row.insertCell();
+                cell.textContent = value;
+                cell.style.padding = '14px';
+            });
+        });
+
+        container.appendChild(table);
+        document.body.appendChild(container);
+
+        // Add click event listener to close the table and copy button if clicked outside
+        document.addEventListener('click', function(event) {
+            const isClickInsideTable = event.target.closest('#productInfoTable');
+            const isClickInsideButton = event.target.closest('#extractButton');
+            const isClickInsideContainer = event.target.closest('#productInfoContainer');
+
+            if (!isClickInsideTable && !isClickInsideButton && !isClickInsideContainer) {
+                document.body.removeChild(container);
+            }
+        });
+    }
+
+    const urlContainsString = window.location.href.includes('partner/mybolia/saved-products/saved-products-list/?id');
+
+    if (urlContainsString) {
+        GM_addStyle(`
+            #extractButton {
+                position: fixed;
+                top: 150px;
+                right: 450px;
+                width: 270px;
+                z-index: 99999;
+                padding: 10px;
+                background: #EAE4D4;
+                color: black;
+                border: none;
+                border-radius: 5px;
+            }
+
+            #extractButton:hover {
+                background-color: #ccc2ab;
+            }
+        `);
+
+        const button = document.createElement('button');
+        button.id = 'extractButton';
+        button.textContent = 'Show list as table';
+        document.body.appendChild(button);
+
+        button.addEventListener('click', function() {
+            const productInfo = extractProductInfo();
+            displayProductTable(productInfo);
+        });
+    }
+})();
